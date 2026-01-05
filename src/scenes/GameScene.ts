@@ -168,6 +168,10 @@ export default class GameScene extends Phaser.Scene {
         // Initialize Camera Shake Rig
         this.shakeRig = new CameraShakeRig();
 
+        // Apply Zoom
+        const zoom = GameConfig.display.zoom ?? 1.0;
+        this.cameras.main.setZoom(zoom);
+
         // ===== 9:16 SAFE FRAME LAYOUT =====
         this.scale.on('resize', this.applyResponsiveLayout, this);
         this.applyResponsiveLayout();
@@ -176,6 +180,7 @@ export default class GameScene extends Phaser.Scene {
     private computeSafeFrame() {
         const width = this.scale.width;
         const height = this.scale.height;
+
 
         // Target Aspect Ratio: 9:16 (0.5625)
         const targetAspect = 9 / 16;
@@ -214,11 +219,12 @@ export default class GameScene extends Phaser.Scene {
         const sf = this.safeFrame;
         const width = this.scale.width; // Screen width (for background)
         const height = this.scale.height;
+        const zoom = this.cameras.main.zoom;
 
         // 1. Sky Background: Always fullscreen
         if (this.skyBg) {
             this.skyBg.setPosition(width / 2, height / 2);
-            this.skyBg.setSize(width, height);
+            this.skyBg.setSize(width / zoom, height / zoom);
         }
 
         // 2. HUD: Bottom of Safe Frame

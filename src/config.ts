@@ -193,5 +193,6 @@ export const GameConfig = {
         playerSize: 200,               // 角色显示大小 (像素) - 增大以便手机上看清
         playerCollisionRadius: 100,    // 角色碰撞半径 (像素) - 应匹配实际可见区域
         playerYOffset: 80,           // 角色Y偏移量 (负值=向上, 正值=向下) - 修正视觉中心点
+        zoom: 0.85,                   // 默认相机缩放 (1.0 = 正常, 0.85 = 视野更广)
     },
 };
