@@ -46,11 +46,11 @@ export class AirborneState implements ISlimeState {
         // ===== ACCUMULATE FAST-FALL ENERGY & TIME =====
         // Work = Force * velocity * time
         // FastFallTime = Duration of active input during descent
-        if (slime.vy > 0 && slime.userAccel > 0) {
+        // CRITICAL: Only accumulate while actively holding button (isSpaceDown)
+        // Post-release decay tail (userAccel > 0 but !isSpaceDown) must NOT inflate energy
+        if (isSpaceDown && slime.vy > 0 && slime.userAccel > 0) {
             slime.fastFallEnergy += slime.userAccel * slime.vy * dt;
-            if (isSpaceDown) {
-                slime.fastFallTime += dt;
-            }
+            slime.fastFallTime += dt;
         }
 
         // 3) Apex Detection - reset fastFallEnergy at apex
