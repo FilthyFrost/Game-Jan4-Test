@@ -29,6 +29,13 @@ export default class Slime {
     public fastFallEnergy: number = 0;       // Energy accumulated during fast fall
     public fastFallTime: number = 0;         // Time spent holding space during active descent (for energy multiplier)
 
+    // Distance-based tracking (prevent "last second charge" exploit)
+    public fallDistanceSinceApex: number = 0;     // Total fall distance from apex
+    public fastFallDistance: number = 0;          // Distance fallen while holding space
+    public prevYForFall: number = 0;              // Previous Y for calculating dy
+    public landingFallDistance: number = 0;       // Snapshot: total fall distance at landing
+    public landingFastFallDistance: number = 0;   // Snapshot: fast-fall distance at landing
+
     // Ground/compression (physics)
     public impactSpeed: number = 0;
     public targetCompression: number = 0;
@@ -127,6 +134,7 @@ export default class Slime {
         // Initial velocity (don't override y position - use the passed in value)
         this.vy = 0;
         this.prevVyForApex = this.vy;
+        this.prevYForFall = y;  // Initialize for distance tracking
 
         const gcfg = GameConfig.ground as any;
         this.groundRecoverTau = (gcfg.releaseRecoverTime ?? 0.12) as number;

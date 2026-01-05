@@ -4,10 +4,15 @@ import type { ISlimeState } from './ISlimeState';
 import { GameConfig } from '../../config';
 
 export class AirborneState implements ISlimeState {
-    enter(_slime: Slime): void {
-        // typically userAccel and holdTime reset happened on exit of previous or special transition
-        // but let's be safe
-        // (Actually, usually we transition with some launch velocity, so don't zero vy here)
+    enter(slime: Slime): void {
+        // Reset distance tracking for new airborne phase
+        slime.fallDistanceSinceApex = 0;
+        slime.fastFallDistance = 0;
+        slime.prevYForFall = slime.y;
+
+        // Reset energy tracking
+        slime.fastFallEnergy = 0;
+        slime.fastFallTime = 0;
     }
 
     update(slime: Slime, dt: number, isSpaceDown: boolean, _justPressed: boolean, _justReleased: boolean): void {
@@ -59,8 +64,23 @@ export class AirborneState implements ISlimeState {
             slime.lastApexHeight = Math.max(0, groundYi - slime.y);
             slime.fastFallEnergy = 0;  // Reset energy at apex
             slime.fastFallTime = 0;    // Reset timer at apex
+
+            // Reset distance tracking at apex (new descent begins)
+            slime.fallDistanceSinceApex = 0;
+            slime.fastFallDistance = 0;
+            slime.prevYForFall = slime.y;
         }
         slime.prevVyForApex = slime.vy;
+
+        // ===== ACCUMULATE DISTANCE (only during descent) =====
+        const dy = slime.y - slime.prevYForFall;
+        if (dy > 0) {
+            slime.fallDistanceSinceApex += dy;
+            if (isSpaceDown) {
+                slime.fastFallDistance += dy;
+            }
+        }
+        slime.prevYForFall = slime.y;
 
         // 4) Ground Contact
         const groundYi = slime.getGroundY();
@@ -68,6 +88,10 @@ export class AirborneState implements ISlimeState {
             slime.y = groundYi;
 
             slime.impactSpeed = Math.max(0, slime.vy);
+
+            // Snapshot distance tracking for energy calculation
+            slime.landingFallDistance = slime.fallDistanceSinceApex;
+            slime.landingFastFallDistance = slime.fastFallDistance;
 
             // Reset air stats
             slime.userAccel = 0;
@@ -80,8 +104,9 @@ export class AirborneState implements ISlimeState {
 
             slime.vy = 0;
 
-            // Calculate difficulty snapshot for ChargingState
-            slime.landingApexHeight = slime.lastApexHeight;
+            // Calculate difficulty snapshot - use actual fall distance if available
+            const actualFallDist = slime.landingFallDistance > 0 ? slime.landingFallDistance : slime.lastApexHeight;
+            slime.landingApexHeight = actualFallDist;
             const g = GameConfig.ground as any;
             const Href = (g.difficultyRefHeight ?? 5000) as number;
             slime.landingDifficulty = Math.max(1, slime.landingApexHeight / Math.max(1, Href));

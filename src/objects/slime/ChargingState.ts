@@ -136,13 +136,14 @@ export class ChargingState implements ISlimeState {
             return;
         }
 
-        // Case: No Input => Absorb
+        // Case: No Input => Absorb (FAILURE - reset combo)
         if (!slime.contactHasInput && !isSpaceDown) {
             const absorbTau = (ground.absorbRelaxTime ?? 0.12) as number;
             slime.currentCompression = slime.approach(slime.currentCompression, 0, dt, absorbTau);
 
             const settleEps = (ground.settleEps ?? 0.5) as number;
             if (slime.currentCompression <= settleEps) {
+                slime.perfectStreak = 0;  // Reset combo on failure
                 slime.transitionTo('GROUNDED_IDLE');
             }
             return;
@@ -178,20 +179,22 @@ export class ChargingState implements ISlimeState {
 
             slime.y = groundYi + slime.currentCompression;
 
-            // Strict Fatigue Exit
+            // Strict Fatigue Exit (FAILURE - reset combo)
             if (slime.currentCompression <= settleEps) {
+                slime.perfectStreak = 0;  // Reset combo on failure
                 slime.transitionTo('GROUNDED_IDLE');
             }
             return;
         }
 
-        // Fallthrough: Relax slowly if not holding
+        // Fallthrough: Relax slowly if not holding (FAILURE - reset combo)
         const idleRelaxTau = (ground.idleRelaxAfterPeak ?? 0.18) as number;
         slime.currentCompression = slime.approach(slime.currentCompression, 0, dt, idleRelaxTau);
         slime.y = groundYi + slime.currentCompression;
 
         const settleEps = (ground.settleEps ?? 0.5) as number;
         if (slime.currentCompression <= settleEps) {
+            slime.perfectStreak = 0;  // Reset combo on failure
             slime.transitionTo('GROUNDED_IDLE');
         }
     }
@@ -213,11 +216,13 @@ export class ChargingState implements ISlimeState {
         const settleEps = (ground.settleEps ?? 0.5) as number;
 
         if (slime.currentCompression <= settleEps) {
+            slime.perfectStreak = 0;  // Reset combo on failure
             slime.transitionTo('GROUNDED_IDLE');
             return;
         }
 
         if (slime.holdLockout) {
+            slime.perfectStreak = 0;  // Reset combo on failure
             slime.transitionTo('GROUNDED_IDLE');
             return;
         }
@@ -293,17 +298,23 @@ export class ChargingState implements ISlimeState {
             // Higher heights = MORE growth per Perfect (exciting exponential feel)
             // Formula: growthRate = baseRate + heightBonus * log(height)
 
-            // Calculate energy ratio: fastFallEnergy vs potential energy of the fall
-            const potentialEnergy = GameConfig.gravity * slime.lastApexHeight;
+            // ===== DISTANCE-BASED ENERGY RATIO (prevents "last second charge" exploit) =====
+            // Use actual fall distance instead of just lastApexHeight
+            const fallDist = Math.max(1, slime.landingFallDistance || slime.lastApexHeight);
+            const fastDist = Math.max(0, slime.landingFastFallDistance || 0);
+            const distFactor = Phaser.Math.Clamp(fastDist / fallDist, 0, 1);
+
+            const potentialEnergy = GameConfig.gravity * fallDist;
             const energyRatioRaw = Phaser.Math.Clamp(slime.fastFallEnergy / Math.max(1, potentialEnergy), 0, 1);
 
-            // Time Factor: Penalize late presses
-            // If you only pressed at the very end, fastFallTime will be small -> multiplier near 0
-            const needTime = (GameConfig.air.fastFallChargeTime ?? 0.25) as number;
-            const timeFactor = Phaser.Math.Clamp(slime.fastFallTime / Math.max(1e-6, needTime), 0, 1);
+            // Dynamic time threshold: scales with fall distance to prevent high-altitude last-0.25s exploit
+            const baseNeedTime = (GameConfig.air.fastFallChargeTime ?? 0.25) as number;
+            const dynamicNeedTime = Phaser.Math.Clamp(baseNeedTime + 0.00005 * fallDist, baseNeedTime, 1.25);
+            const timeFactor = Phaser.Math.Clamp(slime.fastFallTime / Math.max(1e-6, dynamicNeedTime), 0, 1);
 
-            // Final Effective Energy Ratio
-            const energyRatio = Phaser.Math.Clamp(energyRatioRaw * timeFactor, 0, 1);
+            // Final energy ratio = energyRaw * distFactor * timeFactor
+            // Must hold space for significant portion of DISTANCE, not just time
+            const energyRatio = Phaser.Math.Clamp(energyRatioRaw * distFactor * timeFactor, 0, 1);
 
             // ===== EXPONENTIAL GROWTH RATE =====
             // Base multiplier + logarithmic height bonus
