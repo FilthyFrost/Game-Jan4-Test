@@ -108,24 +108,35 @@ export default class Slime {
         // Play jump animation immediately
         this.graphics.play('jump');
 
+        // Initial velocity (don't override y position - use the passed in value)
+        this.vy = 0;
+        this.prevVyForApex = this.vy;
+        this.prevYForFall = y;  // Initialize for distance tracking
+
+        const width = scene.scale.width;
+
         // Feedback text for Perfect/Normal/FAILED (world space, follows slime)
+        // Dynamic font size: 15% of screen width, max 80px
+        const feedbackSize = Math.min(80, Math.floor(width * 0.15));
         this.feedbackText = scene.add.text(x, y - 80, '', {
-            fontSize: '96px',  // Increased from 64px for mobile visibility
+            fontSize: `${feedbackSize}px`,
             fontFamily: 'Arial',
             fontStyle: 'bold',
             color: '#ffffff',
             stroke: '#000000',
-            strokeThickness: 8  // Increased stroke
+            strokeThickness: Math.max(5, feedbackSize * 0.1)
         }).setOrigin(0.5).setDepth(100).setAlpha(0);
 
         // Combo display (world space, BELOW slime)
+        // Dynamic font size: 8% of screen width, max 40px
+        const comboSize = Math.min(40, Math.floor(width * 0.08));
         this.comboText = scene.add.text(x, y + 50, '', {
-            fontSize: '40px',  // Increased from 24px for mobile visibility
+            fontSize: `${comboSize}px`,
             fontFamily: 'Arial',
             fontStyle: 'bold',
             color: '#00ffff',
             stroke: '#000000',
-            strokeThickness: 6  // Increased stroke
+            strokeThickness: Math.max(4, comboSize * 0.1)
         }).setOrigin(0.5, 0.5).setDepth(100).setAlpha(0);
 
         // Yellow spark particles for perfect timing feedback

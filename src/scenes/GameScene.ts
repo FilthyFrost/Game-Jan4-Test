@@ -136,23 +136,27 @@ export default class GameScene extends Phaser.Scene {
         });
 
         // Meter HUD - adjusted position for mobile
-        this.heightText = this.add.text(width / 2, height - 30, '0.0m', {
-            fontSize: '48px',  // Increased from 28px for mobile visibility
+        // Dynamic font size: 10% of screen width, max 64px
+        const heightFontSize = Math.min(64, Math.floor(width * 0.1));
+        this.heightText = this.add.text(width / 2, height * 0.9, '0.0m', {
+            fontSize: `${heightFontSize}px`,
             color: '#ffffff',
             align: 'center',
             fontStyle: 'bold',
             stroke: '#000000',
-            strokeThickness: 6  // Increased stroke for better contrast
+            strokeThickness: Math.max(4, heightFontSize * 0.1)
         }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(200);
 
         // Milestone Graphics (draws in world space)
         this.milestoneGraphics = this.add.graphics();
+        // Dynamic milestone font: 5% of width
+        const msFontSize = Math.min(32, Math.floor(width * 0.05));
         this.milestoneText = this.add.text(0, 0, '', {
-            fontSize: '32px',  // Increased from 18px for mobile visibility
+            fontSize: `${msFontSize}px`,
             color: '#ffff00',
             fontStyle: 'bold',
             stroke: '#000000',
-            strokeThickness: 5  // Increased stroke
+            strokeThickness: 4
         }).setDepth(50);
 
         // ===== START SCREEN OVERLAY =====
@@ -167,34 +171,38 @@ export default class GameScene extends Phaser.Scene {
         const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.7)
             .setScrollFactor(0);
 
-        // Title
-        const title = this.add.text(width / 2, height * 0.3, '🟢 Slime Jump 🟢', {
-            fontSize: '96px',  // Increased from 64px for mobile visibility
+        // Title - Responsive Font Size (15% of width)
+        const titleSize = Math.floor(width * 0.15);
+        const title = this.add.text(width / 2, height * 0.25, '🟢 Slime Jump 🟢', {
+            fontSize: `${titleSize}px`,
             fontFamily: 'Arial',
             fontStyle: 'bold',
             color: '#00ff00',
             stroke: '#000000',
-            strokeThickness: 8  // Increased stroke
+            strokeThickness: Math.max(4, titleSize * 0.1)
         }).setOrigin(0.5).setScrollFactor(0);
 
-        // Instructions (for both desktop and mobile)
-        const instructions = this.add.text(width / 2, height * 0.5,
+        // Instructions
+        const instrSize = Math.max(16, Math.floor(width * 0.045));
+        const instructions = this.add.text(width / 2, height * 0.45,
             '按住屏幕 或 SPACE 快速下落\n在黄色状态松开 = PERFECT\n连续 3 次 PERFECT = 2x 力量!', {
-            fontSize: '32px',  // Increased from 20px for mobile visibility
+            fontSize: `${instrSize}px`,
             fontFamily: 'Arial',
             color: '#ffffff',
             align: 'center',
-            lineSpacing: 10
+            lineSpacing: 10,
+            wordWrap: { width: width * 0.9 } // Prevent overflow
         }).setOrigin(0.5).setScrollFactor(0);
 
         // Start Button
-        this.startButton = this.add.text(width / 2, height * 0.75, '[ 点击开始 ]', {
-            fontSize: '72px',  // Increased from 48px for mobile visibility
+        const btnSize = Math.floor(width * 0.1);
+        this.startButton = this.add.text(width / 2, height * 0.7, '[ 点击开始 ]', {
+            fontSize: `${btnSize}px`,
             fontFamily: 'Arial',
             fontStyle: 'bold',
             color: '#ffff00',
             stroke: '#000000',
-            strokeThickness: 6  // Increased stroke
+            strokeThickness: 6
         }).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true });
 
         // Hover effect
