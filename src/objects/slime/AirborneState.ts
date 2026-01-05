@@ -1,0 +1,102 @@
+
+import type Slime from '../Slime';
+import type { ISlimeState } from './ISlimeState';
+import { GameConfig } from '../../config';
+
+export class AirborneState implements ISlimeState {
+    enter(_slime: Slime): void {
+        // typically userAccel and holdTime reset happened on exit of previous or special transition
+        // but let's be safe
+        // (Actually, usually we transition with some launch velocity, so don't zero vy here)
+    }
+
+    update(slime: Slime, dt: number, isSpaceDown: boolean, _justPressed: boolean, _justReleased: boolean): void {
+        // 1) Air Control
+        if (isSpaceDown) {
+            slime.holdTime += dt;
+            const targetA = Math.min(
+                GameConfig.air.baseFastFallAccel + GameConfig.air.fastFallRamp * slime.holdTime,
+                GameConfig.air.maxFastFallAccel
+            );
+            // Faster approach (0.05 instead of 0.1) for snappier response
+            slime.userAccel = slime.approach(slime.userAccel, targetA, dt, 0.05);
+        } else {
+            slime.holdTime = 0;
+            slime.userAccel = slime.approach(slime.userAccel, 0, dt, GameConfig.air.releaseDecay);
+        }
+
+        // 2) Integrate
+        const ay = GameConfig.gravity + slime.userAccel;
+        slime.vy += ay * dt;
+
+        // Terminal velocity clamp (px/s)
+        // Two-Tier System: Higher limit when "forcing" it down, lower limit for natural fall.
+        // This prevents "infinite energy glitch" by capping the v term in (F * v * dt).
+        const terminalNormal = (GameConfig.air as any).terminalFallSpeed ?? 6000;
+        const terminalFast = (GameConfig.air as any).terminalFastFallSpeed ?? 9000;
+
+        const terminalVy = isSpaceDown ? terminalFast : terminalNormal;
+
+        if (slime.vy > terminalVy) {
+            slime.vy = terminalVy;
+        }
+
+        slime.y += slime.vy * dt;
+
+        // ===== ACCUMULATE FAST-FALL ENERGY & TIME =====
+        // Work = Force * velocity * time
+        // FastFallTime = Duration of active input during descent
+        if (slime.vy > 0 && slime.userAccel > 0) {
+            slime.fastFallEnergy += slime.userAccel * slime.vy * dt;
+            if (isSpaceDown) {
+                slime.fastFallTime += dt;
+            }
+        }
+
+        // 3) Apex Detection - reset fastFallEnergy at apex
+        if (slime.prevVyForApex < 0 && slime.vy >= 0) {
+            const groundYi = slime.getGroundY();
+            slime.lastApexHeight = Math.max(0, groundYi - slime.y);
+            slime.fastFallEnergy = 0;  // Reset energy at apex
+            slime.fastFallTime = 0;    // Reset timer at apex
+        }
+        slime.prevVyForApex = slime.vy;
+
+        // 4) Ground Contact
+        const groundYi = slime.getGroundY();
+        if (slime.y >= groundYi) {
+            slime.y = groundYi;
+
+            slime.impactSpeed = Math.max(0, slime.vy);
+
+            // Reset air stats
+            slime.userAccel = 0;
+            slime.holdTime = 0;
+
+            // Setup collision params for charging state
+            const rawX = GameConfig.ground.impactScale * (slime.impactSpeed * slime.impactSpeed);
+            slime.targetCompression = Math.min(rawX, GameConfig.ground.maxDepth);
+            slime.overflow = Math.max(0, rawX - GameConfig.ground.maxDepth);
+
+            slime.vy = 0;
+
+            // Calculate difficulty snapshot for ChargingState
+            slime.landingApexHeight = slime.lastApexHeight;
+            const g = GameConfig.ground as any;
+            const Href = (g.difficultyRefHeight ?? 5000) as number;
+            slime.landingDifficulty = Math.max(1, slime.landingApexHeight / Math.max(1, Href));
+
+            // Transition
+            slime.transitionTo('GROUND_CHARGING');
+            // We need to pass the "contactHasInput" state if they were holding space on landing
+            if (isSpaceDown) {
+                // If we check this in ‘enter’ of charging, it works too.
+                // But ‘ChargingState’ logic handles `contactHasInput` management.
+            }
+        }
+    }
+
+    exit(_slime: Slime): void {
+        // Cleanup if needed
+    }
+}
