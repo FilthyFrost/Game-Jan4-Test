@@ -40,6 +40,9 @@ export default class GameScene extends Phaser.Scene {
     // Sky background for seamless scrolling
     private skyBg!: Phaser.GameObjects.TileSprite;
 
+    // 9:16 Safe Frame
+    private safeFrame!: { x: number, y: number, width: number, height: number };
+
     constructor() {
         super('GameScene');
     }
@@ -164,6 +167,119 @@ export default class GameScene extends Phaser.Scene {
 
         // Initialize Camera Shake Rig
         this.shakeRig = new CameraShakeRig();
+
+        // ===== 9:16 SAFE FRAME LAYOUT =====
+        this.scale.on('resize', this.applyResponsiveLayout, this);
+        this.applyResponsiveLayout();
+    }
+
+    private computeSafeFrame() {
+        const width = this.scale.width;
+        const height = this.scale.height;
+
+        // Target Aspect Ratio: 9:16 (0.5625)
+        const targetAspect = 9 / 16;
+        const currentAspect = width / height;
+
+        let safeW, safeH, safeX, safeY;
+
+        if (currentAspect > targetAspect) {
+            // Screen is wider than 9:16 (e.g. iPad, Desktop)
+            // Constrain width by height
+            safeH = height;
+            safeW = height * targetAspect;
+            safeX = (width - safeW) / 2;
+            safeY = 0;
+        } else {
+            // Screen is taller/narrower than 9:16 (e.g. Modern Phones)
+            // Constrain height by width? OR just use full width
+            // Logic: "Safe Frame" usually means main content shouldn't exceed this box.
+            // For tall phones, we usually fill width and center vertically (or top align).
+            // But user requested "unified 9:16 safe frame frame". 
+            // If screen is TALLER than 9:16 (e.g. 19.5:9), we clamp to 9:16 height?
+            // "UI forever centered 9:16". 
+
+            safeW = width;
+            safeH = width / targetAspect;
+            safeX = 0;
+            // Center vertically if screen is excessively tall
+            safeY = (height - safeH) / 2;
+        }
+
+        this.safeFrame = { x: safeX, y: safeY, width: safeW, height: safeH };
+    }
+
+    private applyResponsiveLayout() {
+        this.computeSafeFrame();
+        const sf = this.safeFrame;
+        const width = this.scale.width; // Screen width (for background)
+        const height = this.scale.height;
+
+        // 1. Sky Background: Always fullscreen
+        if (this.skyBg) {
+            this.skyBg.setPosition(width / 2, height / 2);
+            this.skyBg.setSize(width, height);
+        }
+
+        // 2. HUD: Bottom of Safe Frame
+        if (this.heightText) {
+            // Font size relative to SAFE width
+            const fs = Math.min(64, Math.floor(sf.width * 0.1));
+            this.heightText.setFontSize(fs);
+            this.heightText.setStroke('#000000', Math.max(4, fs * 0.1));
+
+            // Position: Bottom of Safe Frame (minus padding)
+            // But ensure it doesn't go off screen if safeFrame > screenHeight (unlikely with our logic)
+            // If screen is taller than safe frame (e.g. iPhone X), safe frame is centered.
+            // We might want HUD at bottom of SAFE FRAME.
+            this.heightText.setPosition(width / 2, sf.y + sf.height * 0.9);
+        }
+
+        // 3. Start Screen: Relative to Safe Frame
+        if (this.startOverlay && this.startOverlay.active) {
+            // Resize overlay background to full screen
+            const bg = this.startOverlay.getAt(0) as Phaser.GameObjects.Rectangle;
+            if (bg) {
+                bg.setPosition(width / 2, height / 2);
+                bg.setSize(width, height);
+            }
+
+            // Title (25% from top of safe frame)
+            const title = this.startOverlay.getAt(1) as Phaser.GameObjects.Text;
+            if (title) {
+                const tSize = Math.floor(sf.width * 0.15);
+                title.setFontSize(tSize);
+                title.setStroke('#000000', Math.max(4, tSize * 0.1));
+                title.setPosition(width / 2, sf.y + sf.height * 0.25);
+            }
+
+            // Instructions (45% from top)
+            const instr = this.startOverlay.getAt(2) as Phaser.GameObjects.Text;
+            if (instr) {
+                const iSize = Math.max(16, Math.floor(sf.width * 0.045));
+                instr.setFontSize(iSize);
+                instr.setWordWrapWidth(sf.width * 0.9);
+                instr.setPosition(width / 2, sf.y + sf.height * 0.45);
+            }
+
+            // Button (75% from top)
+            if (this.startButton) {
+                const bSize = Math.floor(sf.width * 0.1);
+                this.startButton.setFontSize(bSize);
+                this.startButton.setPosition(width / 2, sf.y + sf.height * 0.75);
+            }
+        }
+
+        // 4. Milestone: Safe width scaling
+        if (this.milestoneText) {
+            const mSize = Math.min(32, Math.floor(sf.width * 0.05));
+            this.milestoneText.setFontSize(mSize);
+        }
+
+        // 5. Slime UI (Feedback & Combo)
+        if (this.slime) {
+            this.slime.applyUIScale(sf.width);
+        }
     }
 
     private createStartScreen(width: number, height: number) {
@@ -171,33 +287,29 @@ export default class GameScene extends Phaser.Scene {
         const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.7)
             .setScrollFactor(0);
 
-        // Title - Responsive Font Size (15% of width)
-        const titleSize = Math.floor(width * 0.15);
-        const title = this.add.text(width / 2, height * 0.25, '🟢 Slime Jump 🟢', {
-            fontSize: `${titleSize}px`,
+        // Title - Initial placeholders (will be resized by applyResponsiveLayout)
+        const title = this.add.text(width / 2, height * 0.3, '🟢 Slime Jump 🟢', {
+            fontSize: '64px',
             fontFamily: 'Arial',
             fontStyle: 'bold',
             color: '#00ff00',
             stroke: '#000000',
-            strokeThickness: Math.max(4, titleSize * 0.1)
+            strokeThickness: 8
         }).setOrigin(0.5).setScrollFactor(0);
 
         // Instructions
-        const instrSize = Math.max(16, Math.floor(width * 0.045));
-        const instructions = this.add.text(width / 2, height * 0.45,
+        const instructions = this.add.text(width / 2, height * 0.5,
             '按住屏幕 或 SPACE 快速下落\n在黄色状态松开 = PERFECT\n连续 3 次 PERFECT = 2x 力量!', {
-            fontSize: `${instrSize}px`,
+            fontSize: '32px',
             fontFamily: 'Arial',
             color: '#ffffff',
             align: 'center',
-            lineSpacing: 10,
-            wordWrap: { width: width * 0.9 } // Prevent overflow
+            lineSpacing: 10
         }).setOrigin(0.5).setScrollFactor(0);
 
         // Start Button
-        const btnSize = Math.floor(width * 0.1);
-        this.startButton = this.add.text(width / 2, height * 0.7, '[ 点击开始 ]', {
-            fontSize: `${btnSize}px`,
+        this.startButton = this.add.text(width / 2, height * 0.75, '[ 点击开始 ]', {
+            fontSize: '48px',
             fontFamily: 'Arial',
             fontStyle: 'bold',
             color: '#ffff00',

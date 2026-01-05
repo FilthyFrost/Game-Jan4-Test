@@ -109,34 +109,29 @@ export default class Slime {
         this.graphics.play('jump');
 
         // Initial velocity (don't override y position - use the passed in value)
+        // Initial velocity (don't override y position - use the passed in value)
         this.vy = 0;
         this.prevVyForApex = this.vy;
         this.prevYForFall = y;  // Initialize for distance tracking
 
-        const width = scene.scale.width;
-
         // Feedback text for Perfect/Normal/FAILED (world space, follows slime)
-        // Dynamic font size: 15% of screen width, max 80px
-        const feedbackSize = Math.min(80, Math.floor(width * 0.15));
         this.feedbackText = scene.add.text(x, y - 80, '', {
-            fontSize: `${feedbackSize}px`,
+            fontSize: '64px', // Placeholder, updated by applyUIScale
             fontFamily: 'Arial',
             fontStyle: 'bold',
             color: '#ffffff',
             stroke: '#000000',
-            strokeThickness: Math.max(5, feedbackSize * 0.1)
+            strokeThickness: 6
         }).setOrigin(0.5).setDepth(100).setAlpha(0);
 
         // Combo display (world space, BELOW slime)
-        // Dynamic font size: 8% of screen width, max 40px
-        const comboSize = Math.min(40, Math.floor(width * 0.08));
         this.comboText = scene.add.text(x, y + 50, '', {
-            fontSize: `${comboSize}px`,
+            fontSize: '32px', // Placeholder, updated by applyUIScale
             fontFamily: 'Arial',
             fontStyle: 'bold',
             color: '#00ffff',
             stroke: '#000000',
-            strokeThickness: Math.max(4, comboSize * 0.1)
+            strokeThickness: 4
         }).setOrigin(0.5, 0.5).setDepth(100).setAlpha(0);
 
         // Yellow spark particles for perfect timing feedback
@@ -411,5 +406,18 @@ export default class Slime {
     // Ground renderer should use this (visual deformation)
     public getCompression(): number {
         return this.groundDeform;
+    }
+
+    // Dynamic UI Scaling (9:16 Safe Frame)
+    public applyUIScale(safeWidth: number) {
+        // Feedback Text: 15% of safe width, max 80px
+        const feedbackSize = Math.min(80, Math.floor(safeWidth * 0.15));
+        this.feedbackText.setFontSize(feedbackSize);
+        this.feedbackText.setStroke('#000000', Math.max(4, feedbackSize * 0.1));
+
+        // Combo Text: 8% of safe width, max 40px
+        const comboSize = Math.min(40, Math.floor(safeWidth * 0.08));
+        this.comboText.setFontSize(comboSize);
+        this.comboText.setStroke('#000000', Math.max(3, comboSize * 0.1));
     }
 }
