@@ -218,6 +218,19 @@ export class ChargingState implements ISlimeState {
 
             const settleEps = (ground.settleEps ?? 0.5) as number;
             if (slime.currentCompression <= settleEps) {
+                // ===== DEATH CHECK: No input above 100m = instant death =====
+                const PIXELS_PER_METER = GameConfig.display.pixelsPerMeter ?? 50;
+                const SAFE_ZONE_PX = 100 * PIXELS_PER_METER;
+
+                if (slime.landingApexHeight > SAFE_ZONE_PX) {
+                    // Player didn't participate at all - instant death
+                    slime.healthManager.onLanding(slime.landingApexHeight, 'FAILED', true);
+                    slime.showFeedback('FAILED');
+                    if (GameConfig.debug) {
+                        console.log(`[DEATH] No input fall from ${(slime.landingApexHeight / PIXELS_PER_METER).toFixed(0)}m`);
+                    }
+                }
+
                 slime.perfectStreak = 0;  // Reset combo on failure
                 slime.transitionTo('GROUNDED_IDLE');
             }
