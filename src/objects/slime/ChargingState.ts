@@ -392,8 +392,21 @@ export class ChargingState implements ISlimeState {
             rating = 'NORMAL';
         }
 
-        // 30% threshold removed - timing is what matters for PERFECT
-        // Bounce force is now linearly related to how much you pressed space during fall
+        // ===== ANTI-EXPLOIT: No fast-fall = no PERFECT above safe zone =====
+        // Player must actually participate in fast-fall to get PERFECT rating
+        const PIXELS_PER_METER = GameConfig.display.pixelsPerMeter ?? 50;
+        const SAFE_ZONE_PX = 100 * PIXELS_PER_METER;
+        const fallDist = Math.max(1, slime.landingFallDistance);
+        const fastDist = slime.landingFastFallDistance || 0;
+        const fastFallRatio = fastDist / fallDist;
+
+        // If above 100m and didn't fast-fall at least 30% of distance, downgrade PERFECT
+        if (slime.landingApexHeight > SAFE_ZONE_PX && fastFallRatio < 0.3 && rating === 'PERFECT') {
+            rating = 'NORMAL'; // Must participate to get PERFECT
+            if (GameConfig.debug) {
+                console.log(`[ANTI-EXPLOIT] Downgraded PERFECT to NORMAL: fastFallRatio=${fastFallRatio.toFixed(2)}`);
+            }
+        }
 
         // ===== EXPONENTIAL GROWTH based on rating =====
         const g = GameConfig.gravity;
@@ -427,40 +440,87 @@ export class ChargingState implements ISlimeState {
         // ===== ELASTIC ENERGY CALCULATION REMOVED (Display only) =====
 
         if (rating === 'PERFECT') {
-            // ===== SIMPLIFIED LINEAR PHYSICS =====
-            // Press more during fall = bounce higher (intuitive physics)
+            // ===== EXPONENTIAL GROWTH FOR PERFECT =====
+            // Higher heights = MORE growth per Perfect (exciting exponential feel)
+            // Formula: growthRate = baseRate + heightBonus * log(height)
 
+            // ===== DISTANCE-BASED ENERGY RATIO (prevents "last second charge" exploit) =====
+            // Use actual fall distance instead of just lastApexHeight
             const fallDist = Math.max(1, slime.landingFallDistance || slime.lastApexHeight);
             const fastDist = Math.max(0, slime.landingFastFallDistance || 0);
             const distFactor = Phaser.Math.Clamp(fastDist / fallDist, 0, 1);
 
-            // Base growth rate increases with height
-            const baseGrowthRate = 0.15;  // 15% base
-            const heightFactor = 0.05 * Math.log10(1 + slime.lastApexHeight / 100);
+            const potentialEnergy = GameConfig.gravity * fallDist;
+            const energyRatioRaw = Phaser.Math.Clamp(slime.fastFallEnergy / Math.max(1, potentialEnergy), 0, 1);
+
+            // Dynamic time threshold: scales with fall distance to prevent high-altitude last-0.25s exploit
+            const baseNeedTime = (GameConfig.air.fastFallChargeTime ?? 0.25) as number;
+            const dynamicNeedTime = Phaser.Math.Clamp(baseNeedTime + 0.00005 * fallDist, baseNeedTime, 1.25);
+            const timeFactor = Phaser.Math.Clamp(slime.fastFallTime / Math.max(1e-6, dynamicNeedTime), 0, 1);
+
+            // Final energy ratio = energyRaw * distFactor * timeFactor
+            // Must hold space for significant portion of DISTANCE, not just time
+            const energyRatio = Phaser.Math.Clamp(energyRatioRaw * distFactor * timeFactor, 0, 1);
+
+            // ===== EXPONENTIAL GROWTH RATE =====
+            // Base multiplier + logarithmic height bonus
+            // At 500px: 1.20x, At 2500px: 1.30x, At 10000px: 1.40x, etc.
+            const baseGrowthRate = 0.15;  // 15% base growth
+            const heightFactor = 0.05 * Math.log10(1 + slime.lastApexHeight / 100);  // +5% per order of magnitude
             const growthRate = baseGrowthRate + heightFactor;
 
-            // Streak bonus
-            const streakMultiplier = (streakBonus > 1.0) ? 1.5 : 1.0;
+            // Apply energy ratio - must press space to get growth
+            // Apply energy ratio - must press space to get growth
+            // Logic Update: Instead of just scaling the growth rate, we interpolate the BASE multiplier.
+            // energyRatio 0.0 -> 0.85x reuse (Decay)
+            // energyRatio 1.0 -> 1.0 + growthRate (Growth)
+            // This ensures you MUST fast fall to gain height, even with Perfect.
 
-            // Linear interpolation based on how much you pressed
-            // distFactor = 0   → 0.85x (decay 15%)
-            // distFactor = 0.5 → ~1.06x (small growth)
-            // distFactor = 1   → ~1.27x (full growth)
+            // Linear Interpolation: 
+            // Multiplier = Lerp(0.85, 1.0 + growthRate, energyRatio)
             const minMult = 0.85;
+
+            // STREAK BONUS LOGIC FIX:
+            // Streak boosts the GROWTH POTENTIAL, not the base result.
+            // If you have streak but NO energy, you still get 0.85x (Decay).
+            // If you have streak AND energy, you get massive growth.
+            const streakMultiplier = (streakBonus > 1.0) ? 1.5 : 1.0;
             const maxMult = 1.0 + (growthRate * streakMultiplier);
-            const targetMult = minMult + (maxMult - minMult) * distFactor;
 
-            targetH = slime.lastApexHeight * targetMult;
+            let targetMult = minMult + (maxMult - minMult) * energyRatio;
 
+            // Additive bonus also scales with energy
+            const dh0 = 50 + slime.lastApexHeight * 0.05;  // 50px base + 5% of height
+            let growthH = slime.lastApexHeight * targetMult + (dh0 * energyRatio);
+
+            // REMOVED: growthH *= streakBonus; (This was the bug causing infinite height)
+
+            targetH = growthH;
+
+            // Debug logging (only in development)
             if (GameConfig.debug) {
-                console.log(`[PERFECT] H:${Math.round(slime.lastApexHeight)} Press:${(distFactor * 100).toFixed(0)}% Mult:${targetMult.toFixed(2)} -> ${Math.round(targetH)}`);
+                // (streakBonus is actually 2.0 in the variable, but we used 1.5 for the calculation logic to be safe)
+                console.log(`[PERFECT] Height:${Math.round(slime.lastApexHeight)} GrowthRate:${((targetMult - 1) * 100).toFixed(1)}% Energy:${energyRatio.toFixed(2)} StreakBonus:${streakBonus} -> ${Math.round(targetH)}`);
             }
 
         } else if (rating === 'NORMAL') {
-            // ===== HARSH PENALTY FOR NORMAL =====
-            // Lose 30% of height - creates urgency to get Perfect
-            const normalMult = 0.70;  // Was 0.92, now 0.70
+            // ===== DYNAMIC PENALTY FOR NORMAL based on press distance =====
+            // Penalty scales with how much player pressed during fall
+            // distFactor = 0 (no press)   → 0.50x (harsh: lose 50%)
+            // distFactor = 1 (full press) → 0.80x (mild: lose 20%)
+            const fallDist = Math.max(1, slime.landingFallDistance || slime.lastApexHeight);
+            const fastDist = Math.max(0, slime.landingFastFallDistance || 0);
+            const distFactor = Phaser.Math.Clamp(fastDist / fallDist, 0, 1);
+
+            const normalMultMin = 0.50;  // No press = 50% height
+            const normalMultMax = 0.80;  // Full press = 80% height
+            const normalMult = normalMultMin + (normalMultMax - normalMultMin) * distFactor;
+
             targetH = slime.lastApexHeight * normalMult;
+
+            if (GameConfig.debug) {
+                console.log(`[NORMAL] Press:${(distFactor * 100).toFixed(0)}% Mult:${normalMult.toFixed(2)} -> ${Math.round(targetH)}`);
+            }
 
         } else {
             // ===== DEVASTATING PENALTY FOR FAILED =====
@@ -475,18 +535,10 @@ export class ChargingState implements ISlimeState {
         const vTarget = Math.sqrt(2 * g * targetH);
         let vLaunch = vTarget;
 
-        // ===== CAPS: Only apply soft cap for non-perfect =====
+        // ===== CAPS =====
         vLaunch = Math.max(vLaunch, Math.abs(GameConfig.ground.baseLaunchVelocity));
 
-        if (rating !== 'PERFECT') {
-            // Soft cap only for non-perfect to prevent exploitation
-            const vSoft = (ground.softCapVelocity ?? 2600) as number;
-            const softFactor = (ground.softCapFactor ?? 0.25) as number;
-            if (vLaunch > vSoft) {
-                vLaunch = vSoft + (vLaunch - vSoft) * softFactor;
-            }
-        }
-        // Hard cap still applies to everyone
+        // Hard cap applies to everyone
         vLaunch = Math.min(vLaunch, GameConfig.ground.hardCapVelocity);
 
         // ===== SHOW FEEDBACK =====

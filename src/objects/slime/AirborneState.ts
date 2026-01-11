@@ -13,9 +13,20 @@ export class AirborneState implements ISlimeState {
         // Reset energy tracking
         slime.fastFallEnergy = 0;
         slime.fastFallTime = 0;
+
+        // Reset lane switch lock if entering airborne with upward velocity (after bounce)
+        // This allows lane switching again after landing and bouncing
+        if (slime.vy < 0) {
+            slime.resetLaneSwitchLock();
+        }
     }
 
-    update(slime: Slime, dt: number, isSpaceDown: boolean, _justPressed: boolean, _justReleased: boolean): void {
+    update(slime: Slime, dt: number, isSpaceDown: boolean, justPressed: boolean, _justReleased: boolean): void {
+        // Reset fastFallDistance on re-press (prevents multi-tap accumulation exploit)
+        if (justPressed) {
+            slime.fastFallDistance = 0;
+        }
+
         // 1) Air Control
         if (isSpaceDown) {
             slime.holdTime += dt;
@@ -97,6 +108,10 @@ export class AirborneState implements ISlimeState {
             slime.fallDistanceSinceApex = 0;
             slime.fastFallDistance = 0;
             slime.prevYForFall = slime.y;
+
+            // Lock lane switching at apex - player can only switch lanes during ascent
+            // This prevents "free" lane changes during descent without pressing input
+            slime.lockLaneSwitch();
         }
         slime.prevVyForApex = slime.vy;
 

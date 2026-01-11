@@ -96,6 +96,13 @@ export default class Slime {
     // Health System
     public healthManager!: SlimeHealthManager;
 
+    // Lane System (三通道换道)
+    public currentLane: number = 1;              // 0=左, 1=中, 2=右
+    public targetLaneX: number = 0;              // 目标X位置
+    public laneSwitchLocked: boolean = false;    // 快落时锁定换道
+    private laneTween?: Phaser.Tweens.Tween;     // 换道动画
+    private screenWidth: number = 540;           // 画布宽度
+
     // Animation state tracking
     private currentAnimation: string = '';
 
@@ -501,5 +508,83 @@ export default class Slime {
             // On ground, charging/compressing - hold land frame
             this.playAnimation('jump_land');
         }
+    }
+
+    // ============================================================
+    // Lane System Methods (三通道换道)
+    // ============================================================
+
+    /**
+     * Set screen width and initialize lane position
+     */
+    public setScreenWidth(width: number): void {
+        this.screenWidth = width;
+        this.targetLaneX = this.getLaneCenterX(this.currentLane);
+        this.x = this.targetLaneX;
+    }
+
+    /**
+     * Get the center X coordinate for a given lane
+     */
+    public getLaneCenterX(lane: number): number {
+        const laneWidth = this.screenWidth / GameConfig.lane.count;
+        return (lane + 0.5) * laneWidth;
+    }
+
+    /**
+     * Request a lane change. Returns true if successful.
+     * @param direction -1 for left, 1 for right
+     */
+    public requestLaneChange(direction: -1 | 1): boolean {
+        // Block if not airborne
+        if (this.state !== 'AIRBORNE') {
+            return false;
+        }
+
+        // Block if locked (fast-fall active)
+        if (this.laneSwitchLocked) {
+            return false;
+        }
+
+        // Calculate new lane
+        const newLane = this.currentLane + direction;
+
+        // Boundary check
+        if (newLane < 0 || newLane >= GameConfig.lane.count) {
+            return false;
+        }
+
+        // Update lane
+        this.currentLane = newLane;
+        this.targetLaneX = this.getLaneCenterX(newLane);
+
+        // Cancel any existing tween
+        if (this.laneTween) {
+            this.laneTween.stop();
+        }
+
+        // Create tween for smooth movement
+        this.laneTween = this.scene.tweens.add({
+            targets: this,
+            x: this.targetLaneX,
+            duration: GameConfig.lane.tweenDuration,
+            ease: GameConfig.lane.tweenEase,
+        });
+
+        return true;
+    }
+
+    /**
+     * Reset lane switch lock (called when entering AIRBORNE after bounce)
+     */
+    public resetLaneSwitchLock(): void {
+        this.laneSwitchLocked = false;
+    }
+
+    /**
+     * Lock lane switching (called when hold/fast-fall is activated)
+     */
+    public lockLaneSwitch(): void {
+        this.laneSwitchLocked = true;
     }
 }

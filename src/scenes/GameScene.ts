@@ -4,6 +4,7 @@ import Ground from '../objects/Ground';
 import { GameConfig } from '../config';
 import { CameraShakeRig } from './CameraShakeRig';
 import SkyGradientLUT from '../objects/SkyGradientLUT';
+import { GestureManager } from '../input/GestureManager';
 
 export default class GameScene extends Phaser.Scene {
     private slime!: Slime;
@@ -11,6 +12,9 @@ export default class GameScene extends Phaser.Scene {
     private isSpaceDown: boolean = false;
     private pointerDownCount: number = 0;  // Track multi-touch for mobile
     private gameStarted: boolean = false;
+
+    // Gesture Manager (三通道换道手势识别)
+    private gestureManager!: GestureManager;
 
     // Camera Shake
     private shakeRig!: CameraShakeRig;
@@ -184,48 +188,72 @@ export default class GameScene extends Phaser.Scene {
         // 1. Create Ground
         this.ground = new Ground(this, groundY);
 
-        // 2. Create Slime - start at ground level
+        // 2. Create Slime - start at ground level (center lane)
         // Player should sit ON the ground, so Y = ground.y - playerCollisionRadius
         const playerRadius = GameConfig.display.playerCollisionRadius;
         this.slime = new Slime(this, width / 2, this.ground.y - playerRadius, this.ground);
 
-        // 3. Input - Keyboard
+        // Initialize lane system with screen width
+        this.slime.setScreenWidth(width);
+
+        // 3. Initialize Gesture Manager for swipe/hold detection
+        this.gestureManager = new GestureManager(width);
+
+        // 4. Input - Keyboard (space = hold/fast-fall)
         this.input.keyboard?.on('keydown-SPACE', () => { this.isSpaceDown = true; });
         this.input.keyboard?.on('keyup-SPACE', () => { this.isSpaceDown = false; });
 
-        // 4. Input - Touch (for mobile: touch = space)
-        // Use pointer counter to properly handle multi-touch
-        this.input.on('pointerdown', () => {
-            this.pointerDownCount++;
-            this.isSpaceDown = true;
+        // 4b. Input - Keyboard lane switching (A = left, D = right)
+        this.input.keyboard?.on('keydown-A', () => {
+            if (this.slime.state === 'AIRBORNE' && !this.slime.laneSwitchLocked) {
+                this.slime.requestLaneChange(-1);
+            }
         });
-        this.input.on('pointerup', () => {
-            this.pointerDownCount--;
-            if (this.pointerDownCount <= 0) {
-                this.pointerDownCount = 0;
-                this.isSpaceDown = false;
+        this.input.keyboard?.on('keydown-D', () => {
+            if (this.slime.state === 'AIRBORNE' && !this.slime.laneSwitchLocked) {
+                this.slime.requestLaneChange(1);
             }
         });
 
-        // 5. Input Safety - Prevent stuck input on mobile/browser edge cases
-        this.input.on('pointerupoutside', () => {
+        // 5. Input - Touch with gesture tracking (for mobile)
+        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            this.pointerDownCount++;
+            this.gestureManager.onPointerDown(pointer.id, pointer.x, pointer.y, this.time.now);
+        });
+
+        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+            this.gestureManager.onPointerMove(pointer.id, pointer.x, pointer.y);
+        });
+
+        this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
             this.pointerDownCount--;
+            this.gestureManager.onPointerUp(pointer.id);
             if (this.pointerDownCount <= 0) {
                 this.pointerDownCount = 0;
-                this.isSpaceDown = false;
+            }
+        });
+
+        // 6. Input Safety - Prevent stuck input on mobile/browser edge cases
+        this.input.on('pointerupoutside', (pointer: Phaser.Input.Pointer) => {
+            this.pointerDownCount--;
+            this.gestureManager.onPointerUp(pointer.id);
+            if (this.pointerDownCount <= 0) {
+                this.pointerDownCount = 0;
             }
         });
         this.input.on('pointercancel', () => {
             this.pointerDownCount = 0;
-            this.isSpaceDown = false;
+            this.gestureManager.clearAll();
         });
         this.game.events.on('blur', () => {
             this.pointerDownCount = 0;
             this.isSpaceDown = false;
+            this.gestureManager.clearAll();
         });
         this.game.events.on('hidden', () => {
             this.pointerDownCount = 0;
             this.isSpaceDown = false;
+            this.gestureManager.clearAll();
         });
 
         // Meter HUD - adjusted position for mobile
@@ -484,10 +512,28 @@ export default class GameScene extends Phaser.Scene {
 
         this.accumulator += clampedDelta;
 
+        // ===== GESTURE PROCESSING =====
+        // Process gesture manager once per frame (not per physics step)
+        const currentTime = this.time.now;
+        const gesture = this.gestureManager.update(currentTime);
+
+        // Determine if hold is active (from gesture or keyboard)
+        const isHoldActive = gesture.isHoldActive || this.isSpaceDown;
+
+        // Process lane switching (only during gesture detection, before hold is confirmed)
+        if (this.slime.state === 'AIRBORNE' && gesture.swipeDirection !== 0) {
+            this.slime.requestLaneChange(gesture.swipeDirection as -1 | 1);
+        }
+
+        // Lock lane switching if hold is active
+        if (isHoldActive && !this.slime.laneSwitchLocked) {
+            this.slime.lockLaneSwitch();
+        }
+
         let steps = 0;
         while (this.accumulator >= this.FIXED_DT && steps < this.MAX_STEPS_PER_FRAME) {
             // Run physics at fixed timestep
-            this.slime.update(this.FIXED_DT * 1000, this.isSpaceDown);  // Slime expects ms
+            this.slime.update(this.FIXED_DT * 1000, isHoldActive);  // Slime expects ms
             this.ground.render(this.FIXED_DT, this.slime.getCompression(), this.slime.x);
 
             this.accumulator -= this.FIXED_DT;

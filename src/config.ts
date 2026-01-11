@@ -202,4 +202,19 @@ export const GameConfig = {
         healthBarHeight: 12,          // 血量条高度 (像素)
         healthBarOffsetY: -60,        // 血量条Y偏移 (负值=在角色上方)
     },
+
+    // ===================================================================
+    // 三通道换道系统 (Lane Switch System)
+    // ===================================================================
+    lane: {
+        count: 3,                     // 通道数量 (左/中/右)
+        tweenDuration: 100,           // 换道动画时长 (毫秒)
+        tweenEase: 'Quad.easeOut',    // 缓动曲线 (瞬移感)
+
+        // ----- 手势阈值 (基于540×960画布) -----
+        swipeDistRatio: 0.03,         // 滑动触发距离比例 (3% = ~18px on 540w)
+        moveTolRatio: 0.012,          // 按住移动容差比例 (1.2% = ~8px on 540w)
+        holdDelayMs: 80,              // 按住判定延迟 (毫秒)
+        swipeCooldownMs: 120,         // 换道冷却时间 (毫秒)
+    },
 };
