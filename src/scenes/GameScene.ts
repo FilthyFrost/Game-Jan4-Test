@@ -56,8 +56,7 @@ export default class GameScene extends Phaser.Scene {
     private isGameOver: boolean = false;
     private isPlayingDeathAnimation: boolean = false;
 
-    // Screen edge vignette for charge timing feedback
-    private chargeVignetteGraphics!: Phaser.GameObjects.Graphics;
+
 
     // Monster System (怪物系统)
     private monsterManager!: MonsterManager;
@@ -460,10 +459,7 @@ export default class GameScene extends Phaser.Scene {
         // Initialize Camera Shake Rig
         this.shakeRig = new CameraShakeRig();
 
-        // Create screen edge vignette overlay for charge feedback
-        this.chargeVignetteGraphics = this.add.graphics();
-        this.chargeVignetteGraphics.setScrollFactor(0); // Fixed to screen
-        this.chargeVignetteGraphics.setDepth(3000); // Above all game elements
+
 
         // Apply Zoom
         const zoom = GameConfig.display.zoom ?? 1.0;
@@ -984,68 +980,4 @@ export default class GameScene extends Phaser.Scene {
         this.gameOverOverlay.setDepth(2000);
     }
 
-    /**
-     * Draw screen edge vignette for charge timing feedback
-     * - Gold/green glow when in Perfect window (yellowZone or reachedPeak)
-     * - Red glow when overheld (holdLockout)
-     */
-    private updateChargeVignette(): void {
-        this.chargeVignetteGraphics.clear();
-
-        // Only show during charging state
-        if (this.slime.state !== 'GROUND_CHARGING') {
-            return;
-        }
-
-        const { width, height } = this.scale;
-        const thickness = 40; // Edge thickness in pixels
-        let color: number;
-        let alpha: number;
-
-        if (this.slime.holdLockout) {
-            // FAILED: Red warning vignette
-            color = 0xff0000;
-            alpha = 0.4;
-        } else if (this.slime.isInYellowZone || this.slime.reachedPeak) {
-            // PERFECT WINDOW: Pulsing gold vignette
-            const time = Date.now() / 1000;
-            const pulse = 0.5 + 0.5 * Math.sin(time * 8); // Medium pulse
-            color = 0xffcc00; // Gold
-            alpha = 0.15 + pulse * 0.25; // 0.15 - 0.4 range
-        } else {
-            // Not in special zone yet
-            return;
-        }
-
-        // Draw semi-transparent edge rectangles
-        this.chargeVignetteGraphics.fillStyle(color, alpha);
-
-        // Top edge
-        this.chargeVignetteGraphics.fillRect(0, 0, width, thickness);
-
-        // Bottom edge
-        this.chargeVignetteGraphics.fillRect(0, height - thickness, width, thickness);
-
-        // Left edge
-        this.chargeVignetteGraphics.fillRect(0, 0, thickness, height);
-
-        // Right edge
-        this.chargeVignetteGraphics.fillRect(width - thickness, 0, thickness, height);
-
-        // Inner fade gradients (simulate vignette with multiple rectangles)
-        for (let i = 1; i <= 3; i++) {
-            const fadeAlpha = alpha * (1 - i * 0.25);
-            const innerOffset = thickness + i * 15;
-            this.chargeVignetteGraphics.fillStyle(color, fadeAlpha);
-
-            // Top inner
-            this.chargeVignetteGraphics.fillRect(0, thickness + (i - 1) * 15, width, 15);
-            // Bottom inner
-            this.chargeVignetteGraphics.fillRect(0, height - innerOffset, width, 15);
-            // Left inner
-            this.chargeVignetteGraphics.fillRect(thickness + (i - 1) * 15, 0, 15, height);
-            // Right inner
-            this.chargeVignetteGraphics.fillRect(width - innerOffset, 0, 15, height);
-        }
-    }
 }
