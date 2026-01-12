@@ -7,7 +7,7 @@ import SkyGradientLUT from '../objects/SkyGradientLUT';
 import { GestureManager } from '../input/GestureManager';
 import { MonsterManager } from '../objects/MonsterManager';
 import { BulletTimeManager } from '../managers/BulletTimeManager';
-import { BulletTimeUI } from '../ui/BulletTimeUI';
+// BulletTimeUI removed - bullet time is now automatic
 
 export default class GameScene extends Phaser.Scene {
     private slime!: Slime;
@@ -63,7 +63,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Bullet Time System
     private bulletTimeManager!: BulletTimeManager;
-    private bulletTimeUI!: BulletTimeUI;
+    // bulletTimeUI removed - bullet time is now automatic
 
     constructor() {
         super('GameScene');
@@ -157,32 +157,16 @@ export default class GameScene extends Phaser.Scene {
         this.bulletTimeManager = new BulletTimeManager(this);
         this.bulletTimeManager.reset(); // Sets initial energy to 2.0s
 
-        this.bulletTimeUI = new BulletTimeUI(this, this.bulletTimeManager);
-
-        // Hide UI elements until game starts (start screen is showing)
-        this.bulletTimeUI.setVisible(false);
+        // BulletTimeUI removed - bullet time is now automatic
 
         // Events for Bullet Time (Sound/Visuals)
         this.events.on('bullet-time-start', () => {
-            // TODO: Add sound/shader effects
-            console.log('[GameScene] Bullet Time START');
+            // Sound/shader effects can be added here
         });
         this.events.on('bullet-time-end', () => {
-            // TODO: Remove effects
-            console.log('[GameScene] Bullet Time END');
+            // Remove effects here
         });
-        this.events.on('bullet-time-button-click', () => {
-            const heightM = (this.ground.y - this.slime.y) / this.pixelsPerMeter;
-            const isAscending = this.slime.vy < 0; // Negative vy is up
-            this.bulletTimeManager.activate(heightM, isAscending);
-        });
-
-        // Keyboard 'E' for Bullet Time (Desktop testing)
-        this.input.keyboard?.on('keydown-E', () => {
-            const heightM = (this.ground.y - this.slime.y) / this.pixelsPerMeter;
-            const isAscending = this.slime.vy < 0;
-            this.bulletTimeManager.activate(heightM, isAscending);
-        });
+        // Manual bullet time removed - now automatic on PERFECT bounce
 
         // ===== HEIGHT-DRIVEN GRADIENT BACKGROUND =====
         // Initialize gradient LUT system (replaces static background images)
@@ -367,16 +351,14 @@ export default class GameScene extends Phaser.Scene {
         this.input.keyboard?.on('keydown-A', () => {
             if (this.slime.state === 'AIRBORNE' && !this.slime.laneSwitchLocked) {
                 this.slime.requestLaneChange(-1, (dir, x, y) => {
-                    const kills = this.monsterManager.checkSectorCollision(dir, x, y);
-                    if (kills > 0) console.log(`[GameScene] Killed ${kills} monsters!`);
+                    this.monsterManager.checkSectorCollision(dir, x, y);
                 });
             }
         });
         this.input.keyboard?.on('keydown-D', () => {
             if (this.slime.state === 'AIRBORNE' && !this.slime.laneSwitchLocked) {
                 this.slime.requestLaneChange(1, (dir, x, y) => {
-                    const kills = this.monsterManager.checkSectorCollision(dir, x, y);
-                    if (kills > 0) console.log(`[GameScene] Killed ${kills} monsters!`);
+                    this.monsterManager.checkSectorCollision(dir, x, y);
                 });
             }
         });
@@ -634,7 +616,6 @@ export default class GameScene extends Phaser.Scene {
 
         // Show UI elements that were hidden during start screen
         this.heightText.setVisible(true);
-        this.bulletTimeUI.setVisible(true);
 
         // Reset input state to prevent start button click from causing immediate jump
         this.isSpaceDown = false;
@@ -729,15 +710,10 @@ export default class GameScene extends Phaser.Scene {
         // Process lane switching (ascending + swipe detected)
         // Note: Swipe and Hold are mutually exclusive in GestureManager, so no need to check isHoldActive here
         if (this.slime.state === 'AIRBORNE' && this.slime.vy < 0 && gesture.swipeDirection !== 0) {
-            console.log(`[GameScene] Lane change: dir=${gesture.swipeDirection} vy=${this.slime.vy.toFixed(0)}`);
-
             const direction = gesture.swipeDirection as -1 | 1;
             // Trigger lane change with collision callback (fired on attack impact frame)
             this.slime.requestLaneChange(direction, (dir, x, y) => {
-                const kills = this.monsterManager.checkSectorCollision(dir, x, y);
-                if (kills > 0) {
-                    console.log(`[GameScene] Killed ${kills} monsters!`);
-                }
+                this.monsterManager.checkSectorCollision(dir, x, y);
             });
         }
 
@@ -842,9 +818,7 @@ export default class GameScene extends Phaser.Scene {
         const heightYOffset = GameConfig.ui.heightText.yOffset;
         this.heightText.setPosition(this.slime.x, this.slime.y + heightYOffset);
 
-        // Update Bullet Time UI (icon follows player below height text)
-        this.bulletTimeUI.updatePosition(this.slime.x, this.slime.y);
-        this.bulletTimeUI.update();
+        // BulletTimeUI removed - bullet time is now automatic
 
         // ===== UPDATE GRADIENT BACKGROUND =====
         // Update background color based on player height
@@ -904,13 +878,11 @@ export default class GameScene extends Phaser.Scene {
 
     /**
      * Called when player lands (from Slime state)
+     * 落地时清理所有怪物，实现"一跳一舞台"机制
      */
     public onPlayerLanded() {
-        // User requested to REMOVE the monster clearing logic.
-        // Keeping the method for future hooks but removing the action.
-        // const milestoneOffset = GameConfig.milestone?.yOffset ?? 0;
-        // const recordY = this.ground.y - this.recordHeight + milestoneOffset;
-        // this.monsterManager.respawnAboveMilestone(recordY);
+        // 落地清场：清理所有怪物，防止累积刷怪
+        this.monsterManager.onPlayerLanded();
     }
 
     private showGameOver() {

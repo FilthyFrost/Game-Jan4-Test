@@ -14,6 +14,7 @@ export interface MonsterConfig {
     x: number;
     y: number;          // 世界Y坐标 (越小=越高)
     heightMeters: number; // 高度 (米)
+    speedMultiplier?: number; // 速度倍率 (默认1.0)
 }
 
 export class Monster {
@@ -28,12 +29,13 @@ export class Monster {
     public isAlive: boolean = true;
 
     // 通道系统
-    public currentLane: number = 1;  // 0=左, 1=中, 2=右
+    public currentLane: number = 1;  // 0=左, 1=中, 2=右 (创建时固定，不会改变)
     private screenWidth: number;
 
     // 移动AI
     private moveDirection: -1 | 1 = 1;  // -1=左, 1=右
     private moveSpeed: number = 40;
+    private speedMultiplier: number = 1.0; // 速度倍率 (高度越高越快)
     private nextDirectionChange: number = 0;
 
     constructor(scene: Phaser.Scene, config: MonsterConfig, screenWidth: number) {
@@ -43,6 +45,7 @@ export class Monster {
         this.heightMeters = config.heightMeters;
         this.type = config.type;
         this.screenWidth = screenWidth;
+        this.speedMultiplier = config.speedMultiplier ?? 1.0;
 
         // 创建精灵
         const size = GameConfig.monster.a01.size;
@@ -52,10 +55,7 @@ export class Monster {
 
         // 随机初始方向
         this.moveDirection = Math.random() > 0.5 ? 1 : -1;
-        this.moveSpeed = Phaser.Math.Between(
-            GameConfig.monster.moveSpeedMin,
-            GameConfig.monster.moveSpeedMax
-        );
+        this.updateMoveSpeed();
 
         // 设置下次方向改变时间
         this.scheduleDirectionChange();
@@ -65,6 +65,17 @@ export class Monster {
 
         // 播放初始动画
         this.playDirectionAnimation();
+    }
+
+    /**
+     * 更新移动速度 (考虑高度倍率)
+     */
+    private updateMoveSpeed(): void {
+        const baseSpeed = Phaser.Math.Between(
+            GameConfig.monster.moveSpeedMin,
+            GameConfig.monster.moveSpeedMax
+        );
+        this.moveSpeed = baseSpeed * this.speedMultiplier;
     }
 
     /**
@@ -82,21 +93,28 @@ export class Monster {
         const moveAmount = this.moveDirection * this.moveSpeed * dt;
         this.x += moveAmount;
 
-        // 边界检查 - 不让怪物移出画布
-        const margin = GameConfig.monster.a01.size / 2;
-        if (this.x < margin) {
-            this.x = margin;
+        // ===== 边界检查 - 怪物只能在自己通道内活动 =====
+        // 设计理念：怪物只在自己所在通道内左右移动，不会跑到其他通道
+        // 这样玩家换道到怪物所在通道时，一定能打到
+        const laneCount = GameConfig.lane.count ?? 3;
+        const laneWidth = this.screenWidth / laneCount;
+        
+        // 计算当前通道的边界 - 25%边距确保怪物始终在攻击范围内
+        const laneLeftBound = this.currentLane * laneWidth + laneWidth * 0.25;   // 通道左边界（留25%边距）
+        const laneRightBound = (this.currentLane + 1) * laneWidth - laneWidth * 0.25; // 通道右边界（留25%边距）
+        
+        if (this.x < laneLeftBound) {
+            this.x = laneLeftBound;
             this.changeDirection();
-        } else if (this.x > this.screenWidth - margin) {
-            this.x = this.screenWidth - margin;
+        } else if (this.x > laneRightBound) {
+            this.x = laneRightBound;
             this.changeDirection();
         }
 
         // 更新精灵位置
         this.sprite.setPosition(this.x, this.y);
 
-        // 更新当前通道
-        this.updateCurrentLane();
+        // 注意：不再更新通道，怪物固定在创建时的通道内活动
     }
 
     /**
@@ -113,10 +131,7 @@ export class Monster {
      */
     private changeDirection(): void {
         this.moveDirection = this.moveDirection === 1 ? -1 : 1;
-        this.moveSpeed = Phaser.Math.Between(
-            GameConfig.monster.moveSpeedMin,
-            GameConfig.monster.moveSpeedMax
-        );
+        this.updateMoveSpeed();
         this.scheduleDirectionChange();
         this.playDirectionAnimation();
     }
