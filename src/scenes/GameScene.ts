@@ -81,10 +81,16 @@ export default class GameScene extends Phaser.Scene {
             this.load.image(`idle_${i}`, `assets/HumanIdle State/HumanIdle_${frameNum}.png`);
         }
 
-        // Load jump animation frames (4 frames)
+        // Load jump animation frames (4 frames) - right facing (default)
         for (let i = 1; i <= 4; i++) {
             const frameNum = String(i).padStart(4, '0');
             this.load.image(`jump_${i}`, `assets/Jump State/Jump_${frameNum}.png`);
+        }
+
+        // Load jump animation frames (4 frames) - left facing
+        for (let i = 1; i <= 4; i++) {
+            const frameNum = String(i).padStart(4, '0');
+            this.load.image(`jump_left_${i}`, `assets/Jump State Left/Jump_Left_${frameNum}.png`);
         }
 
         // Create spark texture dynamically
@@ -151,6 +157,27 @@ export default class GameScene extends Phaser.Scene {
             ],
             frameRate: 12,
             repeat: 0  // Play once and stop at last frame
+        });
+
+        // LEFT-FACING ANIMATIONS (for lane switching left)
+        // Jump Rise Left animation (going up, facing left)
+        this.anims.create({
+            key: 'jump_rise_left',
+            frames: [
+                { key: 'jump_left_1' }, { key: 'jump_left_2' }
+            ],
+            frameRate: 12,
+            repeat: 0
+        });
+
+        // Jump Fall Left animation (going down, facing left)
+        this.anims.create({
+            key: 'jump_fall_left',
+            frames: [
+                { key: 'jump_left_3' }, { key: 'jump_left_4' }
+            ],
+            frameRate: 12,
+            repeat: 0
         });
 
         // Jump Land animation (on ground, charging) - hold last frame
@@ -515,19 +542,26 @@ export default class GameScene extends Phaser.Scene {
         // ===== GESTURE PROCESSING =====
         // Process gesture manager once per frame (not per physics step)
         const currentTime = this.time.now;
+
+        // ===== LANE SWITCHING LOGIC =====
+        // Core rule: Lane switch is allowed ONLY during ASCENT (vy < 0)
+        // IMPORTANT: Reset lock BEFORE gesture update so swipe detection sees unlocked state
+        if (this.slime.state === 'AIRBORNE' && this.slime.vy < 0) {
+            this.slime.resetLaneSwitchLock();
+            this.gestureManager.resetLaneSwitchLock();
+        }
+
+        // Now process gestures with correct lock state
         const gesture = this.gestureManager.update(currentTime);
 
         // Determine if hold is active (from gesture or keyboard)
         const isHoldActive = gesture.isHoldActive || this.isSpaceDown;
 
-        // Process lane switching (only during gesture detection, before hold is confirmed)
-        if (this.slime.state === 'AIRBORNE' && gesture.swipeDirection !== 0) {
+        // Process lane switching (ascending + swipe detected)
+        // Note: Swipe and Hold are mutually exclusive in GestureManager, so no need to check isHoldActive here
+        if (this.slime.state === 'AIRBORNE' && this.slime.vy < 0 && gesture.swipeDirection !== 0) {
+            console.log(`[GameScene] Lane change: dir=${gesture.swipeDirection} vy=${this.slime.vy.toFixed(0)}`);
             this.slime.requestLaneChange(gesture.swipeDirection as -1 | 1);
-        }
-
-        // Lock lane switching if hold is active
-        if (isHoldActive && !this.slime.laneSwitchLocked) {
-            this.slime.lockLaneSwitch();
         }
 
         let steps = 0;

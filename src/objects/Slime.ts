@@ -102,6 +102,7 @@ export default class Slime {
     public laneSwitchLocked: boolean = false;    // 快落时锁定换道
     private laneTween?: Phaser.Tweens.Tween;     // 换道动画
     private screenWidth: number = 540;           // 画布宽度
+    public facingDirection: -1 | 1 = 1;          // 朝向: -1=左, 1=右 (默认向右)
 
     // Animation state tracking
     private currentAnimation: string = '';
@@ -496,13 +497,21 @@ export default class Slime {
             // On ground, no input - play idle animation
             this.playAnimation('idle');
         } else if (this.state === 'AIRBORNE') {
-            // In the air - check velocity direction
+            // In the air - check velocity direction and facing direction
             if (this.vy < 0) {
-                // Going up - play rise animation
-                this.playAnimation('jump_rise');
+                // Going up - play rise animation based on facing direction
+                if (this.facingDirection === -1) {
+                    this.playAnimation('jump_rise_left');
+                } else {
+                    this.playAnimation('jump_rise');
+                }
             } else {
-                // Going down - play fall animation
-                this.playAnimation('jump_fall');
+                // Going down - play fall animation based on facing direction
+                if (this.facingDirection === -1) {
+                    this.playAnimation('jump_fall_left');
+                } else {
+                    this.playAnimation('jump_fall');
+                }
             }
         } else if (this.state === 'GROUND_CHARGING') {
             // On ground, charging/compressing - hold land frame
@@ -554,9 +563,10 @@ export default class Slime {
             return false;
         }
 
-        // Update lane
+        // Update lane and facing direction
         this.currentLane = newLane;
         this.targetLaneX = this.getLaneCenterX(newLane);
+        this.facingDirection = direction;  // Update facing direction based on lane change
 
         // Cancel any existing tween
         if (this.laneTween) {
