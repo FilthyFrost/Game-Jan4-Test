@@ -5,6 +5,7 @@ import { GameConfig } from '../config';
 import { CameraShakeRig } from './CameraShakeRig';
 import SkyGradientLUT from '../objects/SkyGradientLUT';
 import { GestureManager } from '../input/GestureManager';
+import { MonsterManager } from '../objects/MonsterManager';
 
 export default class GameScene extends Phaser.Scene {
     private slime!: Slime;
@@ -53,6 +54,9 @@ export default class GameScene extends Phaser.Scene {
     private isGameOver: boolean = false;
     private isPlayingDeathAnimation: boolean = false;
 
+    // Monster System (怪物系统)
+    private monsterManager!: MonsterManager;
+
     constructor() {
         super('GameScene');
     }
@@ -75,10 +79,16 @@ export default class GameScene extends Phaser.Scene {
             this.load.image(`die_${i}`, `assets/DIE STATE/HumanSoulDie_${frameNum}.png`);
         }
 
-        // Load idle animation frames (8 frames)
+        // Load idle animation frames (8 frames) - right facing (default)
         for (let i = 1; i <= 8; i++) {
             const frameNum = String(i).padStart(4, '0');
             this.load.image(`idle_${i}`, `assets/HumanIdle State/HumanIdle_${frameNum}.png`);
+        }
+
+        // Load idle animation frames (8 frames) - left facing
+        for (let i = 0; i < 8; i++) {
+            const frameNum = String(i).padStart(2, '0');
+            this.load.image(`idle_left_${i + 1}`, `assets/HumanIdle State Left/HumanIdle_row2_${frameNum}.png`);
         }
 
         // Load jump animation frames (4 frames) - right facing (default)
@@ -93,6 +103,21 @@ export default class GameScene extends Phaser.Scene {
             this.load.image(`jump_left_${i}`, `assets/Jump State Left/Jump_Left_${frameNum}.png`);
         }
 
+        // Load attack animation frames (4 frames) - right facing
+        for (let i = 1; i <= 4; i++) {
+            this.load.image(`attack_right_${i}`, `assets/Human Attack State/RIGHT/frame_${i}.png`);
+        }
+
+        // Load attack animation frames (4 frames) - left facing
+        for (let i = 1; i <= 4; i++) {
+            this.load.image(`attack_left_${i}`, `assets/Human Attack State/LEFT/frame_${i}.png`);
+        }
+
+        // Load Monster A01 animation frames (3 frames each direction)
+        for (let i = 1; i <= 3; i++) {
+            this.load.image(`monster_a01_left_${i}`, `assets/Monsters/Monster A01/left_frame_${i}.png`);
+            this.load.image(`monster_a01_right_${i}`, `assets/Monsters/Monster A01/right_frame_${i}.png`);
+        }
         // Create spark texture dynamically
         const sparkGraphics = this.make.graphics({ x: 0, y: 0 });
         sparkGraphics.fillStyle(0xffff00, 1);
@@ -128,12 +153,23 @@ export default class GameScene extends Phaser.Scene {
 
         // ===== CHARACTER ANIMATION STATE MACHINE =====
 
-        // Idle animation (on ground, no input) - 8 frames, looping
+        // Idle animation (on ground, no input) - 8 frames, looping, right facing
         this.anims.create({
             key: 'idle',
             frames: [
                 { key: 'idle_1' }, { key: 'idle_2' }, { key: 'idle_3' }, { key: 'idle_4' },
                 { key: 'idle_5' }, { key: 'idle_6' }, { key: 'idle_7' }, { key: 'idle_8' }
+            ],
+            frameRate: 8,
+            repeat: -1  // Loop forever
+        });
+
+        // Idle Left animation (on ground, no input, facing left) - 8 frames, looping
+        this.anims.create({
+            key: 'idle_left',
+            frames: [
+                { key: 'idle_left_1' }, { key: 'idle_left_2' }, { key: 'idle_left_3' }, { key: 'idle_left_4' },
+                { key: 'idle_left_5' }, { key: 'idle_left_6' }, { key: 'idle_left_7' }, { key: 'idle_left_8' }
             ],
             frameRate: 8,
             repeat: -1  // Loop forever
@@ -190,6 +226,38 @@ export default class GameScene extends Phaser.Scene {
             repeat: 0
         });
 
+        // Jump Land Left animation (on ground, charging, facing left)
+        this.anims.create({
+            key: 'jump_land_left',
+            frames: [
+                { key: 'jump_left_4' }
+            ],
+            frameRate: 1,
+            repeat: 0
+        });
+
+        // Attack Right animation (lane switch right) - 4 frames, play once
+        this.anims.create({
+            key: 'attack_right',
+            frames: [
+                { key: 'attack_right_1' }, { key: 'attack_right_2' },
+                { key: 'attack_right_3' }, { key: 'attack_right_4' }
+            ],
+            frameRate: 24,  // Fast attack animation
+            repeat: 0
+        });
+
+        // Attack Left animation (lane switch left) - 4 frames, play once
+        this.anims.create({
+            key: 'attack_left',
+            frames: [
+                { key: 'attack_left_1' }, { key: 'attack_left_2' },
+                { key: 'attack_left_3' }, { key: 'attack_left_4' }
+            ],
+            frameRate: 24,  // Fast attack animation
+            repeat: 0
+        });
+
         // Full jump animation (all 4 frames, for compatibility)
         this.anims.create({
             key: 'jump',
@@ -212,6 +280,26 @@ export default class GameScene extends Phaser.Scene {
             repeat: 0  // Play once only
         });
 
+        // Monster A01 - Left animation
+        this.anims.create({
+            key: 'monster_a01_left',
+            frames: [
+                { key: 'monster_a01_left_1' }, { key: 'monster_a01_left_2' }, { key: 'monster_a01_left_3' }
+            ],
+            frameRate: GameConfig.monster.a01.frameRate,
+            repeat: -1
+        });
+
+        // Monster A01 - Right animation
+        this.anims.create({
+            key: 'monster_a01_right',
+            frames: [
+                { key: 'monster_a01_right_1' }, { key: 'monster_a01_right_2' }, { key: 'monster_a01_right_3' }
+            ],
+            frameRate: GameConfig.monster.a01.frameRate,
+            repeat: -1
+        });
+
         // 1. Create Ground
         this.ground = new Ground(this, groundY);
 
@@ -226,6 +314,10 @@ export default class GameScene extends Phaser.Scene {
         // 3. Initialize Gesture Manager for swipe/hold detection
         this.gestureManager = new GestureManager(width);
 
+        // 3b. Initialize Monster Manager
+        this.monsterManager = new MonsterManager(this, width, groundY, this.pixelsPerMeter);
+        this.monsterManager.spawnInitialMonsters();
+
         // 4. Input - Keyboard (space = hold/fast-fall)
         this.input.keyboard?.on('keydown-SPACE', () => { this.isSpaceDown = true; });
         this.input.keyboard?.on('keyup-SPACE', () => { this.isSpaceDown = false; });
@@ -233,12 +325,18 @@ export default class GameScene extends Phaser.Scene {
         // 4b. Input - Keyboard lane switching (A = left, D = right)
         this.input.keyboard?.on('keydown-A', () => {
             if (this.slime.state === 'AIRBORNE' && !this.slime.laneSwitchLocked) {
-                this.slime.requestLaneChange(-1);
+                this.slime.requestLaneChange(-1, (dir, x, y) => {
+                    const kills = this.monsterManager.checkSectorCollision(dir, x, y);
+                    if (kills > 0) console.log(`[GameScene] Killed ${kills} monsters!`);
+                });
             }
         });
         this.input.keyboard?.on('keydown-D', () => {
             if (this.slime.state === 'AIRBORNE' && !this.slime.laneSwitchLocked) {
-                this.slime.requestLaneChange(1);
+                this.slime.requestLaneChange(1, (dir, x, y) => {
+                    const kills = this.monsterManager.checkSectorCollision(dir, x, y);
+                    if (kills > 0) console.log(`[GameScene] Killed ${kills} monsters!`);
+                });
             }
         });
 
@@ -286,7 +384,7 @@ export default class GameScene extends Phaser.Scene {
         // Meter HUD - adjusted position for mobile
         // Dynamic font size: 10% of screen width, max 64px
         const heightFontSize = Math.min(64, Math.floor(width * 0.1));
-        this.heightText = this.add.text(width / 2, height * 0.9, '0.0m', {
+        this.heightText = this.add.text(width / 2, height * 0.9, '0m', {
             fontSize: `${heightFontSize}px`,
             color: '#ffffff',
             align: 'center',
@@ -561,7 +659,15 @@ export default class GameScene extends Phaser.Scene {
         // Note: Swipe and Hold are mutually exclusive in GestureManager, so no need to check isHoldActive here
         if (this.slime.state === 'AIRBORNE' && this.slime.vy < 0 && gesture.swipeDirection !== 0) {
             console.log(`[GameScene] Lane change: dir=${gesture.swipeDirection} vy=${this.slime.vy.toFixed(0)}`);
-            this.slime.requestLaneChange(gesture.swipeDirection as -1 | 1);
+
+            const direction = gesture.swipeDirection as -1 | 1;
+            // Trigger lane change with collision callback (fired on attack impact frame)
+            this.slime.requestLaneChange(direction, (dir, x, y) => {
+                const kills = this.monsterManager.checkSectorCollision(dir, x, y);
+                if (kills > 0) {
+                    console.log(`[GameScene] Killed ${kills} monsters!`);
+                }
+            });
         }
 
         let steps = 0;
@@ -569,6 +675,9 @@ export default class GameScene extends Phaser.Scene {
             // Run physics at fixed timestep
             this.slime.update(this.FIXED_DT * 1000, isHoldActive);  // Slime expects ms
             this.ground.render(this.FIXED_DT, this.slime.getCompression(), this.slime.x);
+
+            // Update monsters
+            this.monsterManager.update(this.FIXED_DT);
 
             this.accumulator -= this.FIXED_DT;
             steps++;
@@ -645,7 +754,7 @@ export default class GameScene extends Phaser.Scene {
         const heightPixels = Math.max(0, groundLevel - currentFeet);
         const heightMeters = heightPixels / this.pixelsPerMeter;
 
-        this.heightText.setText(`${heightMeters.toFixed(1)}m`);
+        this.heightText.setText(`${heightMeters.toFixed(0)}m`);
 
         // ===== UPDATE GRADIENT BACKGROUND =====
         // Update background color based on player height
@@ -697,7 +806,7 @@ export default class GameScene extends Phaser.Scene {
         const textX = visibleLeft + 10;
         const meters = this.recordHeight / this.pixelsPerMeter;
 
-        this.milestoneText.setText(`🏆 ${meters.toFixed(1)}m`);
+        this.milestoneText.setText(`🏆 ${meters.toFixed(0)}m`);
         this.milestoneText.setPosition(textX, lineY - 25);
     }
 
@@ -725,7 +834,7 @@ export default class GameScene extends Phaser.Scene {
         // Stats
         const finalHeight = this.recordHeight / this.pixelsPerMeter;
         const statsText = this.add.text(width / 2, height * 0.5,
-            `最高记录: ${finalHeight.toFixed(1)}m\n生命值: 0`, {
+            `最高记录: ${finalHeight.toFixed(0)}m\n生命值: 0`, {
             fontSize: '32px',
             fontFamily: 'Arial',
             color: '#ffffff',

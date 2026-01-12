@@ -217,4 +217,27 @@ export const GameConfig = {
         holdDelayMs: 80,              // 按住判定延迟 (毫秒)
         swipeCooldownMs: 120,         // 换道冷却时间 (毫秒)
     },
+
+    // ===================================================================
+    // 怪物系统 (Monster System)
+    // ===================================================================
+    monster: {
+        // ----- 生成参数 -----
+        minSpacing: 10,               // 怪物之间最小Y轴间距 (米)
+
+        // ----- 移动参数 -----
+        moveSpeedMin: 20,             // 最小移动速度 (像素/秒)
+        moveSpeedMax: 60,             // 最大移动速度 (像素/秒)
+        directionChangeInterval: 2000, // 方向改变的平均间隔 (毫秒)
+        directionChangeVariance: 1500, // 方向改变的随机变化范围
+
+        // ----- A01 怪物 -----
+        a01: {
+            minHeight: 15,            // 最小生成高度 (米)
+            maxHeight: 100,           // 最大生成高度 (米)
+            spawnProbability: 0.70,   // 每10米生成概率 (70%)
+            frameRate: 8,             // 动画帧率
+            size: 48,                 // 显示大小 (像素)
+        },
+    },
 };

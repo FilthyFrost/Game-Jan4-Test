@@ -106,6 +106,7 @@ export default class Slime {
 
     // Animation state tracking
     private currentAnimation: string = '';
+    public isPlayingAttackAnimation: boolean = false;  // 攻击动画播放中
 
     constructor(scene: Phaser.Scene, x: number, y: number, ground: Ground) {
         this.scene = scene;
@@ -493,9 +494,16 @@ export default class Slime {
         // Don't change animation if dead
         if (this.healthManager.isDead) return;
 
+        // Don't change animation if attack is playing
+        if (this.isPlayingAttackAnimation) return;
+
         if (this.state === 'GROUNDED_IDLE') {
-            // On ground, no input - play idle animation
-            this.playAnimation('idle');
+            // On ground, no input - play idle animation based on facing direction
+            if (this.facingDirection === -1) {
+                this.playAnimation('idle_left');
+            } else {
+                this.playAnimation('idle');
+            }
         } else if (this.state === 'AIRBORNE') {
             // In the air - check velocity direction and facing direction
             if (this.vy < 0) {
@@ -514,8 +522,12 @@ export default class Slime {
                 }
             }
         } else if (this.state === 'GROUND_CHARGING') {
-            // On ground, charging/compressing - hold land frame
-            this.playAnimation('jump_land');
+            // On ground, charging/compressing - hold land frame based on facing direction
+            if (this.facingDirection === -1) {
+                this.playAnimation('jump_land_left');
+            } else {
+                this.playAnimation('jump_land');
+            }
         }
     }
 
@@ -543,8 +555,9 @@ export default class Slime {
     /**
      * Request a lane change. Returns true if successful.
      * @param direction -1 for left, 1 for right
+     * @param onAttackHit Optional callback fired on attack hit frame
      */
-    public requestLaneChange(direction: -1 | 1): boolean {
+    public requestLaneChange(direction: -1 | 1, onAttackHit?: (dir: -1 | 1, x: number, y: number) => void): boolean {
         // Block if not airborne
         if (this.state !== 'AIRBORNE') {
             return false;
@@ -567,6 +580,9 @@ export default class Slime {
         this.currentLane = newLane;
         this.targetLaneX = this.getLaneCenterX(newLane);
         this.facingDirection = direction;  // Update facing direction based on lane change
+
+        // Play attack animation with hit callback
+        this.playAttackAnimation(direction, onAttackHit);
 
         // Cancel any existing tween
         if (this.laneTween) {
@@ -596,5 +612,49 @@ export default class Slime {
      */
     public lockLaneSwitch(): void {
         this.laneSwitchLocked = true;
+    }
+
+    /**
+     * Play attack animation on lane switch, trigger hit callback on mid-frame
+     * @param direction -1 for left attack, 1 for right attack
+     * @param onHit Callback fired on attack hit frame (frame 2)
+     */
+    public playAttackAnimation(direction: -1 | 1, onHit?: (dir: -1 | 1, x: number, y: number) => void): void {
+        // Set flag to prevent normal animation updates
+        this.isPlayingAttackAnimation = true;
+
+        // Choose attack animation based on direction
+        const attackAnim = direction === 1 ? 'attack_right' : 'attack_left';
+
+        // Force play attack animation (bypass currentAnimation check)
+        this.currentAnimation = '';
+        this.graphics.play(attackAnim);
+
+        // Trigger hit callback on frame 2 (the impact frame)
+        let hitTriggered = false;
+        const frameHandler = () => {
+            const currentFrame = this.graphics.anims.currentFrame;
+            if (currentFrame && currentFrame.index === 2 && !hitTriggered) {
+                hitTriggered = true;
+                if (onHit) {
+                    onHit(direction, this.x, this.y);
+                }
+            }
+        };
+        this.graphics.on('animationupdate', frameHandler);
+
+        // When attack animation completes, return to jump_rise frame 2
+        this.graphics.once('animationcomplete', () => {
+            this.isPlayingAttackAnimation = false;
+            this.graphics.off('animationupdate', frameHandler);
+
+            // Return to jump_rise frame 2 with correct facing direction
+            if (this.facingDirection === -1) {
+                this.graphics.setTexture('jump_left_2');
+            } else {
+                this.graphics.setTexture('jump_2');
+            }
+            this.currentAnimation = '';
+        });
     }
 }
